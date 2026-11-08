@@ -1,6 +1,6 @@
-"""ETL Grapes_of_Weather : Météo-France quotidien -> indicateurs par station, puis par région et par millésime.
+"""ETL Grapes_of_Weather : des relevés quotidiens Météo-France aux indicateurs par station, par région et par millésime.
 
-Étapes (on les construit une par une) :
+Étapes du pipeline :
     1. Extraction  : télécharger les fichiers bruts dans data/raw/
     2. Chargement  : lire les CSV d'un département
     3. Nettoyage   : codes qualité, valeurs manquantes, saison
@@ -16,27 +16,28 @@ from src import config as cfg
 
 
 # ---------------------------------------------------------------------------
-# 1. Phase d'Extraction
+# 1. Phase d'extraction
 # ---------------------------------------------------------------------------
-def download_file(dep: str, period: str, force: bool = False) -> Path: # La signature de la fonction c'est les types d'entrée et de sortie prévu
+# La signature de la fonction précise les types attendus en entrée et en sortie.
+def download_file(dep: str, period: str, force: bool = False) -> Path:
     """Télécharge le fichier RR-T-Vent d'un département et d'une période dans data/raw/.
 
     Renvoie le chemin local du fichier. Si le fichier existe déjà et que force=False, il n'est pas retéléchargé.
     """
-    # D'abord l'URL distante :
+    # Construction de l'URL distante.
     url = cfg.FILE_URL.format(period=period, dep=dep)
     
-    # Ensuite le chemin local : 
+    # Construction du chemin local du fichier.
     filename = url.split("/")[-1]
     path = cfg.RAW_DIR / Path(filename)
     # print(path)
     
-    # Déjà téléchargé ?
+    # Fichier déjà présent : pas de nouveau téléchargement, sauf si force=True.
     if path.exists() and not force :
         print('deja la !')
         return path
     
-    # Enfin, télécharger (créer le dossier, request.get, écrire return path)
+    # Téléchargement par blocs : création du dossier, envoi de la requête, écriture du fichier.
     path.parent.mkdir(parents=True, exist_ok=True)
     with requests.get(url, stream=True, timeout=60) as response :
         response.raise_for_status()
@@ -51,19 +52,19 @@ def download_all(force: bool = False) -> None:
     for dep in cfg.DEP_TO_REGION:
         for period in cfg.PERIODS:
             path = download_file(dep, period, force)
-            print(f"  ✓ {path.name}")
+            print(f"  OK {path.name}")
 
 
 # ---------------------------------------------------------------------------
 # 2. Chargement
 # ---------------------------------------------------------------------------
-# Les fichiers RR-T-Vent ont ~60 colonnes : chaque mesure X est suivie de son
+# Les fichiers RR-T-Vent comptent environ 60 colonnes : chaque mesure X est suivie de son
 # code qualité QX (ex. TN puis QTN). On ne garde que ce qui sert aux indicateurs.
 USECOLS: list[str] = [
     "NUM_POSTE", "NOM_USUEL", "LAT", "LON", "ALTI", "AAAAMMJJ",
-    "RR", "QRR",   # pluie (mm)
-    "TN", "QTN",   # température min (°C)
-    "TX", "QTX",   # température max (°C)
+    "RR", "QRR",   # précipitations (mm)
+    "TN", "QTN",   # température minimale (degrés Celsius)
+    "TX", "QTX",   # température maximale (degrés Celsius)
 ]
 
 
@@ -98,7 +99,7 @@ MEASURES = ["RR", "TN", "TX"]
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
-    """Masque les mesures de qualité douteuse et garde la saison viticole (avril -> octobre)."""
+    """Masque les mesures de qualité douteuse et garde la saison viticole (d'avril à octobre)."""
     df = df.copy()
     for col in MEASURES:
         q = df[f"Q{col}"]
@@ -115,8 +116,8 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # 4. Indicateurs par station et par année
 # ---------------------------------------------------------------------------
-GDD_BASE = 10.0          # °C : zéro de végétation de la vigne
-HEAT_THRESHOLD = 35.0    # °C : jour de canicule
+GDD_BASE = 10.0          # zéro de végétation de la vigne, en degrés Celsius
+HEAT_THRESHOLD = 35.0    # seuil d'un jour de canicule, en degrés Celsius
 MIN_COVERAGE = 0.9       # part minimale de jours avec TN et TX valides dans la saison
 
 
@@ -144,7 +145,7 @@ def station_indicators(df: pd.DataFrame) -> pd.DataFrame:
         rain_mm=("RR", "sum"),
         n_valid=("VALID_T", "sum"),
     )
-    season_days = 214  # 1er avril -> 31 octobre
+    season_days = 214  # du 1er avril au 31 octobre
     out["coverage"] = out["n_valid"] / season_days
     return out[out["coverage"] >= MIN_COVERAGE].drop(columns="n_valid")
 
@@ -165,7 +166,7 @@ def region_year(stations: pd.DataFrame) -> pd.DataFrame:
 
 
 def run() -> None:
-    """Pipeline complet : téléchargement -> CSV station_year et region_year."""
+    """Pipeline complet : téléchargement, traitement, puis écriture de station_year.csv et region_year.csv."""
     download_all()
     parts = []
     for dep in cfg.DEP_TO_REGION:

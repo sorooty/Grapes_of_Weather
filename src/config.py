@@ -5,7 +5,7 @@ from pathlib import Path
 APP_NAME = "Grapes of Weather"
 AUTHOR = "Seyni Balde"
 PROFESSOR = "Mano Mathew"
-COURSE = "BDML1 – Data Visualization & Business Intelligence (EFREI)"
+COURSE = "BDML1, Data Visualization & Business Intelligence (EFREI)"
 
 # --- Chemins ------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,7 +22,7 @@ FILE_URL = (
 )
 PERIODS = ["previous-1950-2024", "latest-2025-2026"]
 
-# --- Régions viticoles -> départements ----------------------------------
+# --- Régions viticoles et départements associés -----------------------
 REGIONS: dict[str, list[str]] = {
     "Bordeaux": ["33"],
     "Champagne": ["51", "10"],
